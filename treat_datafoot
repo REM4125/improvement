@@ -1,0 +1,165 @@
+import warnings
+a=0
+length_boucle = 0
+ 
+with warnings.catch_warnings():
+    warnings.simplefilter('ignore')
+   
+    for game_id in np.unique(passesFv['game_id']):
+ 
+        pass_events_game = passesFv[passesFv['game_id']==game_id].reset_index(drop=True)
+     
+
+        string = get_string(pass_events_game)
+        if game_id <= 7500:
+            try:
+                match = footo8.sql_query_to_dataframe("SELECT x, y, speed_x, speed_y, player_id,speed,acceleration, team_id, halftime, frame FROM position_bd_" + str(int(game_id)) + " WHERE " + string)
+            except: 
+
+                pass
+        elif (game_id > 7500) & (game_id <= 8500):
+            try: 
+                match = footo9.sql_query_to_dataframe("SELECT x, y, speed_x, speed_y, player_id,speed,acceleration, team_id, halftime, frame FROM position_bd_" + str(int(game_id)) + " WHERE " + string)
+            except: 
+                pass
+        else:
+            try:    
+                match = footo10.sql_query_to_dataframe("SELECT x, y, speed_x, speed_y, player_id,speed,acceleration, team_id, halftime, frame FROM position_bd_" + str(int(game_id)) + " WHERE " + string)
+            except:
+                pass
+
+        game_info = games[games['id']==game_id]
+ 
+        attacking_team_l_to_r = game_info['team_id_left_to_right'].iloc[0]
+
+
+        for pass_i in range(len(pass_events_game)):
+            # start_time_pass = time.time()
+ 
+            pass_to_study = pass_events_game.iloc[pass_i,:]
+ 
+            passer = match[(match['frame']==pass_to_study['real_start_frame'])
+                        &(match['player_id']==pass_to_study['player_id'])
+                        &(match['halftime']==pass_to_study['halftime'])]
+
+            if passer.shape[0]==0:
+                
+                continue
+            else:
+                passer = passer.iloc[0,:]
+           
+            teammates = match[(match['frame']==pass_to_study['real_start_frame'])
+                        &(match['player_id']!=pass_to_study['player_id'])
+                        &(match['halftime']==pass_to_study['halftime'])
+                        &(match['team_id'] == pass_to_study['team_id'])].reset_index(drop=True)
+           
+            opponents = match[(match['frame']==pass_to_study['real_start_frame'])
+                        &(match['halftime']==pass_to_study['halftime'])
+                        &(match['team_id'] != pass_to_study['team_id'])].reset_index(drop=True)
+           
+            if (pass_to_study['halftime']==1) & (pass_to_study['team_id']!=attacking_team_l_to_r):
+                invert_speed = True
+            elif (pass_to_study['halftime']==2) & (pass_to_study['team_id']==attacking_team_l_to_r):
+                invert_speed = True
+            else:
+                invert_speed = False
+           
+            obs_to_change = np.array(pass_to_study[["near_opponent_box",
+                'start_closest_def_dist',
+                'pitch_control_at_start',
+                'goal_kick','corner_kick','free_kick',
+                'header','throw_in',"one_touch"]])
+ 
+            if invert_speed:
+                speed_x = -passer['speed_x']
+                speed_y = -passer['speed_y']
+                x = game_info['pitch_length'] - passer['x']
+                y = game_info['pitch_width'] - passer['y']
+            else:
+                speed_x = passer['speed_x']
+                speed_y = passer['speed_y']
+                x = passer['x']
+                y= passer['y']
+ 
+            obs_to_change = np.append(obs_to_change, x)
+            obs_to_change = np.append(obs_to_change, y)            
+            obs_to_change = np.append(obs_to_change, speed_x)
+            obs_to_change = np.append(obs_to_change, speed_y)
+ 
+            for i in range(len(teammates)):
+ 
+                obs_to_add = obs_to_change.copy()
+ 
+                target = teammates.iloc[i,:]
+ 
+                pos_target = target[['x','y']].values
+ 
+                if invert_speed:
+                    target_speed_x = -target['speed_x']
+                    target_speed_y = -target['speed_y']
+                    target_x = game_info['pitch_length'] - pos_target[0]
+                    target_y = game_info['pitch_width'] - pos_target[1]
+                else:
+                    target_speed_x = target['speed_x']
+                    target_speed_y = target['speed_y']
+                    target_x = pos_target[0]
+                    target_y = pos_target[1]
+               
+                speed_target = [target_speed_x,target_speed_y]
+               
+                angle_pass = angle_between_vectors((speed_x,speed_y), pos_target)
+                angle_speed = angle_between_vectors((speed_x,speed_y),speed_target)
+ 
+                target_start_dist = np.sqrt((passer['x']-pos_target[0])**2 + (passer['y']-pos_target[1])**2)
+ 
+                obs_to_add = np.append(obs_to_add, target_x)
+                obs_to_add = np.append(obs_to_add, target_y)
+                obs_to_add = np.append(obs_to_add, target_speed_x)
+                obs_to_add = np.append(obs_to_add, target_speed_y)
+                obs_to_add = np.append(obs_to_add, angle_pass)
+                obs_to_add = np.append(obs_to_add, angle_speed)
+                obs_to_add = np.append(obs_to_add, target_start_dist)
+ 
+                var_X = (pos_target[0]-passer['x'])
+                var_Y = (pos_target[1]-passer['y'])
+ 
+                if abs(var_X) < 1e-6:
+                    obs_to_add = np.append(obs_to_add, np.nan)
+                    continue
+ 
+                if abs(var_Y) < 1e-6:
+                    obs_to_add = np.append(obs_to_add, np.nan)
+                    continue
+ 
+                vecteur_dir_BC = (-1,(var_X)/(var_Y))
+                dist = math.tan(6) * np.sqrt((var_X)**2+(var_Y)**2)
+                norme_vect_dir_BC = np.sqrt(vecteur_dir_BC[0]**2+vecteur_dir_BC[1]**2) # ||v||
+                vect_dist_BC = (dist/norme_vect_dir_BC) * np.array(vecteur_dir_BC)
+ 
+                C1 = pos_target - vect_dist_BC
+                C2 = pos_target + vect_dist_BC
+ 
+                triange_vertices = [(passer['x'],passer['y']),C1,C2]
+ 
+                nbr_opp_in_triangle = 0
+ 
+                for j in range(len(opponents)):
+ 
+                    opp_j = (opponents['x'].iloc[j], opponents['y'].iloc[j])
+ 
+                    if is_inside_triangle(triange_vertices[0],triange_vertices[1],triange_vertices[2], opp_j):
+ 
+                        nbr_opp_in_triangle += 1
+ 
+                obs_to_add = np.append(obs_to_add, nbr_opp_in_triangle)
+ 
+                if target['player_id'] == pass_to_study['involved_player_id']:
+                    obs_to_add = np.append(obs_to_add, 1)
+                else:
+                    obs_to_add = np.append(obs_to_add, 0)
+               
+                df.loc[len(df)] = obs_to_add
+
+
+        a=a+1
+        print(a)
