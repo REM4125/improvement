@@ -1,110 +1,29 @@
-import numpy as np
+def create_target(row_index, total_rows, df): 
 
-predictions = pd.DataFrame()
-player = []
-halftime = []
-frame = []
-potentielvaep = []
-name_receiver = []
-i=0
-input_shape = xscore.layers[0].input_shape[1]
+    current_player= df['player_id'][row_index]
+    current_team = df['team'][row_index]
+    end_index = min(row_index + 6, total_rows)
 
-for i in range(len(new_df)):
-    print(i)
-    pass_to_study = new_df.iloc[i, :]
+    i=0
+    for next_index in range(row_index, end_index):
+        if ((df['new_events'][next_index]=="Goal") or (df['big_chance'][next_index] == 1)) and (current_team == df['team_id'][next_index]):
+            df.at[row_index, 'result'] = "future_big_chance_or_goal"
+            return df
+        elif (df['new_events'][next_index]=="Shot") and (current_team == df['team_id'][next_index]):
+            df.at[row_index, 'result'] = "future_shot"
+            return df
+        elif (df['ball_lost'][next_index] == 1) and (current_player == df['player_id'][next_index]) and (i < 3):
+            df.at[row_index, 'result'] = "ball_lost_directly"
+            return df
+        elif (df['ball_lost'][next_index] == 1):
+            df.at[row_index, 'result'] = "ball_lost_in_5"
+            return df
+        else:
+            i=i+1
+            continue
     
-    all_teammates = match[(match['halftime'] == pass_to_study['halftime']) & 
-                          (match['frame'] == pass_to_study['start_frame']) & 
-                          (match['team_id'] == pass_to_study['team_id']) & 
-                          (match['player_id'] != pass_to_study['player_id'])].reset_index(drop=True)
-    all_teammates["game_id"]=9262
-    all_teammates["name"] = all_teammates["player_id"].map(players.set_index("id")["last_name"])
-    all_teammates = all_teammates.merge(game[['team_id_left_to_right', 'team_id_left_to_right3', 'game_id', 'pitch_length', 'pitch_width']], 
-                                        on=['game_id'])
-    
-    all_teammates['x'] = all_teammates.apply(lambda row: d.normalize_symmetrize_row_x(row, 'x', 'team_id'), axis=1)
-    all_teammates['y'] = all_teammates.apply(lambda row: d.normalize_symmetrize_row_y(row, 'y', 'team_id'), axis=1)
-    
-    all_opponents = match[(match['halftime'] == pass_to_study['halftime']) & 
-                          (match['frame'] == pass_to_study['start_frame']) & 
-                          (match['team_id'] != pass_to_study['team_id'])].reset_index(drop=True)
-    
-    for player_i in range(all_teammates.shape[0]):
-        original_features = new_df.iloc[i, 13:].copy()
-        
-        original_features['end_x_norm-0'] = all_teammates.loc[player_i, 'x']
-        original_features['end_y_norm-0'] = all_teammates.loc[player_i, 'y']
-        original_features['diff_x_norm-0'] = original_features['end_x_norm-0'] - original_features['start_x_norm-0']
-        original_features['diff_y_norm-0'] = original_features['end_y_norm-0'] - original_features['start_y_norm-0']
+    df.at[row_index, 'result'] = "keep_the_ball"
+    return df
 
-        original_features['end_angle_to_goal-0'] = calculate_angle(original_features[['end_x_norm-0','end_y_norm-0']])
-
-        GOAL_X = 1
-        GOAL_Y = 1 / 2
-
-        diff_x = GOAL_X - original_features['end_x_norm-0']
-        diff_y = abs(GOAL_Y - original_features['end_x_norm-0'])
-                    
-        original_features['end_distance_to_goal-0'] = np.sqrt(diff_x ** 2 + diff_y ** 2)
-
-        original_features['distance_covered_norm-0'] = np.sqrt((original_features['end_x_norm-0'] - original_features['start_x_norm-0']) ** 2 + (original_features['end_y_norm-0'] - original_features['start_y_norm-0']) ** 2)
-
-        distances_opponents = []
-
-        
-
-        for opponents in range(all_opponents.shape[0]):
-            dist = np.sqrt((all_teammates.iloc[player_i,:]['x'] - all_opponents.iloc[opponents,:]['x']) ** 2 + (all_teammates.iloc[player_i,:]['y'] - all_opponents.iloc[opponents,:]['y']) ** 2)
-            distances_opponents.append(dist)
-            # print(dist)
-        
-        original_features['end_closest_def_dist-0'] = np.min(distances_opponents)
-
-        for i, val in enumerate(original_features):
-            key = str(i) 
-            if key in data_mean:
-                original_features[i] -= data_mean[key]
-
-        for i, val in enumerate(original_features):
-            key = str(i) 
-            if key in data_std:
-                original_features[i] = original_features[i]/data_std[key]
-        
-
-        
-        original_features = np.array(original_features.values, dtype=np.float32)
-        
-        # Make predictions
-        prediction_score = xscore.predict(original_features.reshape(1, input_shape))
-        prediction_concede = xconcede.predict(original_features.reshape(1, input_shape))
-
-        prev_event = new_df.iloc[i-1,:] # type: ignore
-
-        if prev_event['team_id'] == df_pass.iloc[4,:]['team_id']:
-            diff_score = prediction_score - prev_event['probaScore']
-            diff_concede = prediction_concede - prev_event['probaConcede']
-
-            new_vaep = diff_score - diff_concede
-
-        else :
-            diff_score = prediction_score - prev_event['probaConcede']
-            diff_concede = prediction_concede - prev_event['probaScore']
-
-            new_vaep = diff_score - diff_concede
-        
-        
-        # Calculate new_vaep
-        
-        player.append(new_df.loc[i, "player_id"])
-        halftime.append(match.loc[i, 'halftime'])
-        frame.append(match.loc[i, 'frame'])
-        potentielvaep.append(new_vaep)
-        name_receiver.append(all_teammates.loc[player_i, 'name'])
-    i=i+1
-
-        
-predictions["player_id"] = player
-predictions['halftime'] = halftime
-predictions["frame"] = frame
-predictions["new_vaep"] = potentielvaep
-predictions["name"] = name_receiver
+df_events["result"]=0
+df_events.apply(lambda x: create_target(x.name, len(df_events), df_events), axis=1)
